@@ -2,10 +2,13 @@ let livros = JSON.parse(localStorage.getItem('livrosSalvos')) || [];
 
 const form = document.getElementById("formLivro");
 const tabela = document.getElementById("tabelaLivros");
-
 const inputIndex = document.getElementById("indexLivro");
 
 renderizarTabela();
+
+function salvarLocalStorage(){
+    localStorage.setItem('livrosSalvos', JSON.stringify(livros))
+}
 
 function renderizarTabela(){
     tabela.innerHTML = "";
