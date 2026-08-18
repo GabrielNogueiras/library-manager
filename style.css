@@ -3,6 +3,8 @@ body{
   width: auto;
   margin: auto;
   margin-top: 10px;
+  background-color: #121212;
+    color: white
 }
 
 input{
