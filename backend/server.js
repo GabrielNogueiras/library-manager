@@ -1,9 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const PORT = 3001;
+
+
 app.use(cors());
 app.use(express.json());
 
@@ -27,16 +30,27 @@ pool.connect(async (err, client, release) => {
 
   try {
     await client.query(`
-      CREATE TABLE IF NOT EXISTS livros (
+      CREATE TABLE IF NOT EXISTS public.livros (
         id SERIAL PRIMARY KEY,
         titulo VARCHAR(255) NOT NULL,
         autor VARCHAR(255) NOT NULL,
         ano VARCHAR(10) NOT NULL
       );
     `);
-    console.log(' Tabela "livros" verificada e pronta para uso');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.usuario (
+        id SERIAL PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        senha VARCHAR(255) NOT NULL,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    console.log(' Tabelas "livros" e "usuario" verificadas com sucesso');
   } catch (erroTabela) {
-    console.error(' Erro ao criar tabela automaticamente:', erroTabela.message);
+    console.error(' Erro ao criar tabelas:', erroTabela.message);
   } finally {
     release();
   }
@@ -45,7 +59,7 @@ pool.connect(async (err, client, release) => {
 
 app.get('/livros', async (req, res) => {
   try {
-    const resultado = await pool.query('SELECT * FROM livros ORDER BY id ASC');
+    const resultado = await pool.query('SELECT * FROM public.livros ORDER BY id ASC');
     res.json(resultado.rows);
   } catch (erro) {
     console.error('Erro no GET /livros:', erro.message);
@@ -53,26 +67,10 @@ app.get('/livros', async (req, res) => {
   }
 });
 
-
-app.get('/debug-banco', async (req, res) => {
-  try {
-    const db = await pool.query('SELECT current_database(), current_user');
-    const total = await pool.query('SELECT count(*) FROM livros');
-    res.json({
-      bancoConectado: db.rows[0].current_database,
-      usuario: db.rows[0].current_user,
-      totalLivrosSalvos: total.rows[0].count
-    });
-  } catch (erro) {
-    res.status(500).json({ erro: erro.message });
-  }
-});
-
-
 app.get('/livros/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const resultado = await pool.query('SELECT * FROM livros WHERE id = $1', [id]);
+    const resultado = await pool.query('SELECT * FROM public.livros WHERE id = $1', [id]);
 
     if (resultado.rows.length === 0) {
       return res.status(404).json({ mensagem: 'Livro não encontrado' });
@@ -85,7 +83,6 @@ app.get('/livros/:id', async (req, res) => {
   }
 });
 
-
 app.post('/livros', async (req, res) => {
   try {
     const { titulo, autor, ano } = req.body;
@@ -95,7 +92,7 @@ app.post('/livros', async (req, res) => {
     }
 
     const resultado = await pool.query(
-      'INSERT INTO livros (titulo, autor, ano) VALUES ($1, $2, $3) RETURNING *',
+      'INSERT INTO public.livros (titulo, autor, ano) VALUES ($1, $2, $3) RETURNING *',
       [titulo, autor, ano]
     );
 
@@ -105,7 +102,6 @@ app.post('/livros', async (req, res) => {
     res.status(500).json({ erro: erro.message });
   }
 });
-
 
 app.put('/livros/:id', async (req, res) => {
   try {
@@ -117,7 +113,7 @@ app.put('/livros/:id', async (req, res) => {
     }
 
     const resultado = await pool.query(
-      'UPDATE livros SET titulo = $1, autor = $2, ano = $3 WHERE id = $4 RETURNING *',
+      'UPDATE public.livros SET titulo = $1, autor = $2, ano = $3 WHERE id = $4 RETURNING *',
       [titulo, autor, ano, id]
     );
 
@@ -132,11 +128,10 @@ app.put('/livros/:id', async (req, res) => {
   }
 });
 
-
 app.delete('/livros/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const resultado = await pool.query('DELETE FROM livros WHERE id = $1 RETURNING *', [id]);
+    const resultado = await pool.query('DELETE FROM public.livros WHERE id = $1 RETURNING *', [id]);
 
     if (resultado.rows.length === 0) {
       return res.status(404).json({ mensagem: 'Livro não encontrado' });
@@ -146,6 +141,73 @@ app.delete('/livros/:id', async (req, res) => {
   } catch (erro) {
     console.error('Erro no DELETE /livros/:id:', erro.message);
     res.status(500).json({ erro: erro.message });
+  }
+});
+
+
+
+app.post('/usuarios/cadastro', async (req, res) => {
+  const { nome, email, senha } = req.body;
+
+  try {
+    const senhaHash = await bcrypt.hash(senha, 10);
+
+    const novoUsuario = await pool.query(
+      'INSERT INTO public.usuario (nome, email, senha) VALUES ($1, $2, $3) RETURNING id, nome, email',
+      [nome, email, senhaHash]
+    );
+
+    res.status(201).json({
+      mensagem: 'Usuário cadastrado com sucesso!',
+      usuario: novoUsuario.rows[0]
+    });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(400).json({ erro: 'Este e-mail já está cadastrado.' });
+    }
+    console.error('Erro no cadastro:', err);
+    res.status(500).json({ erro: 'Erro interno ao cadastrar usuário.' });
+  }
+});
+
+app.post('/usuarios/login', async (req, res) => {
+  const { email, senha } = req.body;
+
+  try {
+    console.log(`\n Tentativa de login para o e-mail: [${email}]`);
+
+    const usuarioBD = await pool.query(
+      'SELECT * FROM public.usuario WHERE email = $1',
+      [email]
+    );
+
+    if (usuarioBD.rows.length === 0) {
+      console.log(' E-mail NÃO foi encontrado no banco de dados.');
+      return res.status(401).json({ erro: 'E-mail ou senha inválidos.' });
+    }
+
+    const usuario = usuarioBD.rows[0];
+    console.log(' Usuário encontrado no banco:', usuario.email);
+
+    const senhaValida = await bcrypt.compare(senha, usuario.senha);
+
+    if (!senhaValida) {
+      console.log(' Senha INCORRETA para este e-mail.');
+      return res.status(401).json({ erro: 'E-mail ou senha inválidos.' });
+    }
+
+    console.log('🎉 Login bem-sucedido!');
+    res.status(200).json({
+      mensagem: 'Login realizado com sucesso!',
+      usuario: {
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email
+      }
+    });
+  } catch (err) {
+    console.error('Erro detalhado no login:', err);
+    res.status(500).json({ erro: 'Erro interno ao realizar login.' });
   }
 });
 
