@@ -1,37 +1,35 @@
-document.getElementById('formLogin').addEventListener('submit', async (e) => {
+document.getElementById('formCadastro').addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const nome = document.getElementById('nome').value.trim();
     const email = document.getElementById('email').value.trim().toLowerCase();
     const senha = document.getElementById('senha').value.trim();
     const elementoMensagem = document.getElementById('mensagem');
 
-    elementoMensagem.textContent = 'Verificando...';
+    elementoMensagem.textContent = 'Cadastrando...';
     elementoMensagem.className = '';
 
     try {
-        const resposta = await fetch('http://localhost:3001/usuarios/login', {
+        const resposta = await fetch('http://localhost:3001/usuarios/cadastro', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ email, senha })
+            body: JSON.stringify({ nome, email, senha })
         });
 
         const dados = await resposta.json();
 
         if (resposta.ok) {
-            localStorage.setItem('token', dados.token);
-
-            localStorage.setItem('usuarioLogado', JSON.stringify(dados.usuario));
-
-            elementoMensagem.textContent = 'Login realizado com sucesso! Redirecionando...';
+            elementoMensagem.textContent = 'Cadastro realizado com sucesso! Redirecionando...';
             elementoMensagem.className = 'sucesso';
 
+
             setTimeout(() => {
-                window.location.href = 'index.html';
-            }, 1000);
+                window.location.href = 'login.html';
+            }, 1500);
         } else {
-            elementoMensagem.textContent = dados.erro || 'Erro ao fazer login.';
+            elementoMensagem.textContent = dados.erro || 'Erro ao cadastrar usuário.';
             elementoMensagem.className = 'erro';
         }
     } catch (erro) {

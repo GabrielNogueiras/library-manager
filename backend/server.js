@@ -2,14 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = 3001;
-
+const JWT_SECRET = 'chave_segura_123';
 
 app.use(cors());
 app.use(express.json());
-
 
 const pool = new Pool({
   user: 'postgres',
@@ -18,7 +18,6 @@ const pool = new Pool({
   password: 'postgreSQLnogueira66',
   port: 5432,
 });
-
 
 pool.connect(async (err, client, release) => {
   if (err) {
@@ -144,8 +143,6 @@ app.delete('/livros/:id', async (req, res) => {
   }
 });
 
-
-
 app.post('/usuarios/cadastro', async (req, res) => {
   const { nome, email, senha } = req.body;
 
@@ -194,11 +191,19 @@ app.post('/usuarios/login', async (req, res) => {
     if (!senhaValida) {
       console.log(' Senha INCORRETA para este e-mail.');
       return res.status(401).json({ erro: 'E-mail ou senha inválidos.' });
-    }
+    } 
 
-    console.log('🎉 Login bem-sucedido!');
+    const token = jwt.sign(
+      { id: usuario.id, email: usuario.email, nome: usuario.nome },
+      JWT_SECRET,
+      { expiresIn: '2h' }
+    );
+
+    console.log('🎉 Login bem-sucedido! Token JWT gerado.');
+
     res.status(200).json({
       mensagem: 'Login realizado com sucesso!',
+      token: token,
       usuario: {
         id: usuario.id,
         nome: usuario.nome,
@@ -210,7 +215,6 @@ app.post('/usuarios/login', async (req, res) => {
     res.status(500).json({ erro: 'Erro interno ao realizar login.' });
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(` Servidor Node.js rodando em http://localhost:${PORT}`);
